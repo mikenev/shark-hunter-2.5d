@@ -30,14 +30,18 @@ namespace SharkHunter.EditorTools
         {
             foreach (var d in new[] { GenDir + "/Meshes", GenDir + "/Materials", GenDir + "/Textures", PrefabDir, SettingsDir, Root + "/Scenes" })
                 Directory.CreateDirectory(d);
+            AssetDatabase.DeleteAsset(PrefabDir);
+            Directory.CreateDirectory(PrefabDir);
             AssetDatabase.Refresh();
 
             var mats = MakeMaterials();
             var meshes = MakeMeshes();
             var config = LoadOrCreate<SharkConfig>(SettingsDir + "/SharkConfig.asset");
-            var prefabs = MakePrefabs(meshes, mats, config);
+            var defs = MakePreyDefinitions();
+            var burst = MakeBurstEffect(MakeBubbleMaterial());
+            var prefabs = MakePrefabs(meshes, mats, config, defs, burst);
             var profile = MakeVolumeProfile();
-            var bubbleMat = MakeBubbleMaterial();
+            var bubbleMat = AssetDatabase.LoadAssetAtPath<Material>(GenDir + "/Materials/Bubble.mat");
 
             BuildScene(prefabs, meshes, mats, config, profile, bubbleMat);
             ConfigureProject();
@@ -47,13 +51,14 @@ namespace SharkHunter.EditorTools
 
         // ---------- materials ----------
 
-        class Mats { public Material shark, sharkBelly, dark, fishA, fishAB, fishB, fishBB, rock, rockDark, kelp, kelpDark, sand, ridge; }
+        class Mats { public Material shark, sharkBelly, dark, fishA, fishAB, fishC, fishCB, fishD, fishDB, rock, rockDark, kelp, kelpDark, sand, ridge; }
 
         static Mats MakeMaterials() => new Mats
         {
             shark = Mat("Shark_Back", "#5F7F98"), sharkBelly = Mat("Shark_Belly", "#E4EDF1"), dark = Mat("Dark", "#1E2630"),
             fishA = Mat("FishA_Back", "#F2872B"), fishAB = Mat("FishA_Belly", "#FFD9A0"),
-            fishB = Mat("FishB_Back", "#F5CF3A"), fishBB = Mat("FishB_Belly", "#FFF4B8"),
+            fishC = Mat("FishC_Back", "#D9487F"), fishCB = Mat("FishC_Belly", "#FFC2D6"),
+            fishD = Mat("FishD_Back", "#3F7F96"), fishDB = Mat("FishD_Belly", "#8DBBC0"),
             rock = Mat("Rock", "#4F6068"), rockDark = Mat("Rock_Dark", "#1B2D36"),
             kelp = Mat("Kelp", "#3E9A5C"), kelpDark = Mat("Kelp_Dark", "#14392E"),
             sand = Mat("Sand", "#A89A70"), ridge = Mat("Ridge", "#2E5870"),
@@ -117,7 +122,7 @@ namespace SharkHunter.EditorTools
 
         // ---------- meshes ----------
 
-        class Meshes { public Mesh sharkBody, sharkTail, fish, rockA, rockB, kelpA, kelpB, seabed; public Mesh[] ridges; }
+        class Meshes { public Mesh sharkBody, sharkTail, sharkJaw, fish, rockA, rockB, kelpA, kelpB, seabed; public Mesh[] ridges; }
 
         static Mesh Save(Mesh m)
         {
@@ -129,7 +134,7 @@ namespace SharkHunter.EditorTools
 
         static Meshes MakeMeshes() => new Meshes
         {
-            sharkBody = Save(ShapeFactory.SharkBody()), sharkTail = Save(ShapeFactory.SharkTail()), fish = Save(ShapeFactory.Fish()),
+            sharkBody = Save(ShapeFactory.SharkBody()), sharkTail = Save(ShapeFactory.SharkTail()), sharkJaw = Save(ShapeFactory.SharkJaw()), fish = Save(ShapeFactory.Fish()),
             rockA = Save(ShapeFactory.Rock(1)), rockB = Save(ShapeFactory.Rock(2)),
             kelpA = Save(ShapeFactory.Kelp(1)), kelpB = Save(ShapeFactory.Kelp(2)),
             seabed = Save(ShapeFactory.Seabed()),
@@ -143,7 +148,7 @@ namespace SharkHunter.EditorTools
 
         // ---------- prefabs ----------
 
-        class Prefabs { public GameObject shark, fishA, fishB, rockA, rockB, kelpA, kelpB; }
+        class Prefabs { public GameObject shark, fishAmbient, rockA, rockB, kelpA, kelpB; public PreyFish preySmall, preyBig; }
 
         static GameObject MeshObject(string name, Mesh mesh, params Material[] mats)
         {
@@ -163,7 +168,7 @@ namespace SharkHunter.EditorTools
             return p;
         }
 
-        static Prefabs MakePrefabs(Meshes m, Mats mat, SharkConfig config)
+        static Prefabs MakePrefabs(Meshes m, Mats mat, SharkConfig config, PreyDefs defs, GameObject burst)
         {
             var p = new Prefabs();
 
@@ -175,6 +180,8 @@ namespace SharkHunter.EditorTools
             col.direction = 0; col.radius = 0.35f; col.height = 2.8f; col.center = new Vector3(0.2f, 0f, 0f);
             shark.AddComponent<SwimInput>();
             var controller = shark.AddComponent<SharkController>();
+            var biteComp = shark.AddComponent<SharkBite>();
+            new SerializedObject(biteComp).Also(bo => { bo.FindProperty("config").objectReferenceValue = config; bo.ApplyModifiedProperties(); });
             new SerializedObject(controller).Also(co => { co.FindProperty("config").objectReferenceValue = config; co.ApplyModifiedProperties(); });
             var visual = new GameObject("Visual");
             visual.transform.SetParent(shark.transform, false);
@@ -183,17 +190,91 @@ namespace SharkHunter.EditorTools
             var tail = MeshObject("Tail", m.sharkTail, mat.shark);
             tail.transform.SetParent(visual.transform, false);
             tail.transform.localPosition = new Vector3(ShapeFactory.SharkTailJointX, 0f, 0f);
+            var jaw = MeshObject("Jaw", m.sharkJaw, mat.sharkBelly);
+            jaw.transform.SetParent(visual.transform, false);
+            jaw.transform.localPosition = new Vector3(ShapeFactory.JawHingeX, ShapeFactory.JawHingeY, 0f);
             var sv = visual.AddComponent<SharkVisual>();
-            new SerializedObject(sv).Also(so => { so.FindProperty("tail").objectReferenceValue = tail.transform; so.ApplyModifiedProperties(); });
+            new SerializedObject(sv).Also(so =>
+            {
+                so.FindProperty("tail").objectReferenceValue = tail.transform;
+                so.FindProperty("jaw").objectReferenceValue = jaw.transform;
+                so.ApplyModifiedProperties();
+            });
             p.shark = SavePrefab(shark, "Shark");
 
-            p.fishA = SavePrefab(MeshObject("FishA", m.fish, mat.fishA, mat.fishAB, mat.dark), "FishA");
-            p.fishB = SavePrefab(MeshObject("FishB", m.fish, mat.fishB, mat.fishBB, mat.dark), "FishB");
+            p.fishAmbient = SavePrefab(MeshObject("FishAmbient", m.fish, mat.fishD, mat.fishDB, mat.dark), "FishAmbient");
+            p.preySmall = SavePrey("PreyFishSmall", m.fish, defs.small, burst, 1f, mat.fishA, mat.fishAB, mat.dark);
+            p.preyBig = SavePrey("PreyFishBig", m.fish, defs.big, burst, 2.3f, mat.fishC, mat.fishCB, mat.dark);
             p.rockA = SavePrefab(MeshObject("RockA", m.rockA, mat.rock), "RockA");
             p.rockB = SavePrefab(MeshObject("RockB", m.rockB, mat.rock), "RockB");
             p.kelpA = SavePrefab(Kelp("KelpA", m.kelpA, mat.kelp), "KelpA");
             p.kelpB = SavePrefab(Kelp("KelpB", m.kelpB, mat.kelp), "KelpB");
             return p;
+        }
+
+        static PreyFish SavePrey(string name, Mesh mesh, PreyDefinition def, GameObject burst, float scale, params Material[] mats)
+        {
+            var go = MeshObject(name, mesh, mats);
+            go.transform.localScale = Vector3.one * scale;
+            var col = go.AddComponent<SphereCollider>();
+            col.isTrigger = true; col.radius = 0.4f; col.center = new Vector3(0.05f, 0f, 0f);
+            var prey = go.AddComponent<PreyFish>();
+            prey.definition = def;
+            prey.deathEffect = burst;
+            return SavePrefab(go, name).GetComponent<PreyFish>();
+        }
+
+        class PreyDefs { public PreyDefinition small, big; }
+
+        static PreyDefs MakePreyDefinitions() => new PreyDefs
+        {
+            small = CreateIfMissing<PreyDefinition>(SettingsDir + "/Prey_Small.asset", d =>
+            { d.displayName = "Small fish"; d.health = 1; d.wanderSpeed = 1.6f; d.fleeSpeed = 5.5f; d.detectRadius = 6f; d.points = 10; d.nutrition = 0.2f; }),
+            big = CreateIfMissing<PreyDefinition>(SettingsDir + "/Prey_Big.asset", d =>
+            { d.displayName = "Big fish"; d.health = 2; d.wanderSpeed = 1.2f; d.fleeSpeed = 4.2f; d.detectRadius = 5f; d.points = 35; d.nutrition = 0.45f; }),
+        };
+
+        static T CreateIfMissing<T>(string path, System.Action<T> init) where T : ScriptableObject
+        {
+            var a = AssetDatabase.LoadAssetAtPath<T>(path);
+            if (a != null) return a;
+            a = ScriptableObject.CreateInstance<T>();
+            init(a);
+            AssetDatabase.CreateAsset(a, path);
+            return a;
+        }
+
+        static GameObject MakeBurstEffect(Material bubbleMat)
+        {
+            var go = new GameObject("BiteBurst");
+            var ps = go.AddComponent<ParticleSystem>();
+            ps.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+            var main = ps.main;
+            main.loop = false; main.duration = 0.5f;
+            main.startLifetime = new ParticleSystem.MinMaxCurve(0.6f, 1.2f);
+            main.startSpeed = new ParticleSystem.MinMaxCurve(1.5f, 4.5f);
+            main.startSize = new ParticleSystem.MinMaxCurve(0.3f, 0.7f);
+            main.startColor = new ParticleSystem.MinMaxGradient(new Color(1f, 0.35f, 0.3f, 0.9f), new Color(1f, 0.7f, 0.5f, 0.9f));
+            main.gravityModifier = -0.15f;
+            main.maxParticles = 40;
+            main.stopAction = ParticleSystemStopAction.Destroy;
+            var emission = ps.emission;
+            emission.rateOverTime = 0f;
+            emission.SetBursts(new[] { new ParticleSystem.Burst(0f, 28) });
+            var shape = ps.shape; shape.shapeType = ParticleSystemShapeType.Sphere; shape.radius = 0.2f;
+            var col = ps.colorOverLifetime; col.enabled = true;
+            var g = new Gradient();
+            g.SetKeys(new[] { new GradientColorKey(Color.white, 0f), new GradientColorKey(Color.white, 1f) },
+                      new[] { new GradientAlphaKey(1f, 0f), new GradientAlphaKey(0.8f, 0.5f), new GradientAlphaKey(0f, 1f) });
+            col.color = g;
+            var size = ps.sizeOverLifetime; size.enabled = true;
+            size.size = new ParticleSystem.MinMaxCurve(1f, AnimationCurve.Linear(0f, 1f, 1f, 0.3f));
+            var r = go.GetComponent<ParticleSystemRenderer>();
+            r.sharedMaterial = bubbleMat;
+            r.shadowCastingMode = ShadowCastingMode.Off; r.receiveShadows = false;
+            var prefab = PrefabUtility.SaveAsPrefabAsset(go, PrefabDir + "/BiteBurst.prefab");
+            Object.DestroyImmediate(go);
+            return prefab;
         }
 
         static GameObject Kelp(string name, Mesh mesh, Material mat)
@@ -314,12 +395,12 @@ namespace SharkHunter.EditorTools
 
             // Ambient fish
             var life = Group("Ambient Life", world);
-            for (int i = 0; i < 14; i++)
+            for (int i = 0; i < 12; i++)
             {
-                var go = (GameObject)PrefabUtility.InstantiatePrefab(i % 2 == 0 ? pf.fishA : pf.fishB);
+                var go = (GameObject)PrefabUtility.InstantiatePrefab(pf.fishAmbient);
                 go.transform.SetParent(life, false);
                 float cx = -24f + (float)rnd.NextDouble() * 48f;
-                go.transform.position = new Vector3(cx, -3.5f + (float)rnd.NextDouble() * 8f, -2f + (float)rnd.NextDouble() * 7f);
+                go.transform.position = new Vector3(cx, -3.5f + (float)rnd.NextDouble() * 9f, 3f + (float)rnd.NextDouble() * 7f);
                 float sc = 0.9f + (float)rnd.NextDouble() * 0.9f;
                 go.transform.localScale = Vector3.one * sc;
                 var sw = go.AddComponent<SimpleSwimmer>();
@@ -328,6 +409,21 @@ namespace SharkHunter.EditorTools
                 sw.maxX = cx + 6f + (float)rnd.NextDouble() * 6f;
                 sw.bobAmplitude = 0.15f + (float)rnd.NextDouble() * 0.3f;
             }
+
+            // Gameplay: session/HUD, prey spawner, bite feedback.
+            var session = new GameObject("GameSession").AddComponent<GameSession>();
+            session.shark = shark.GetComponent<SharkController>();
+            var hud = session.gameObject.AddComponent<HudOverlay>();
+            hud.session = session; hud.bite = shark.GetComponent<SharkBite>();
+            var fb = camGo.AddComponent<BiteFeedback>();
+            fb.bite = shark.GetComponent<SharkBite>(); fb.cam = sv;
+            var spawner = new GameObject("PreySpawner").AddComponent<PreySpawner>();
+            spawner.shark = shark.transform; spawner.area = area;
+            spawner.entries = new[]
+            {
+                new PreySpawner.Entry { prefab = pf.preySmall, targetCount = 8 },
+                new PreySpawner.Entry { prefab = pf.preyBig, targetCount = 3 },
+            };
 
             EditorSceneManager.SaveScene(scene, ScenePath);
             EditorBuildSettings.scenes = new[] { new EditorBuildSettingsScene(ScenePath, true) };

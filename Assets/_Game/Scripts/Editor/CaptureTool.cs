@@ -19,8 +19,20 @@ namespace SharkHunter.EditorTools
         const string PendingKey = "SharkHunter.CapturePending";
         static int frames;
         static float startTime;
+        static PreyFish fleeProbe;
 
-        class ScriptedInput : ISwimInput { public Vector2 Move { get; set; } }
+        class ScriptedInput : ISwimInput
+        {
+            public Vector2 Move { get; set; }
+            public float BiteEvery = -1f;
+            float next;
+            public bool ConsumeBite()
+            {
+                if (BiteEvery < 0f || Time.time < next) return false;
+                next = Time.time + BiteEvery;
+                return true;
+            }
+        }
 
         static CaptureTool() => EditorApplication.playModeStateChanged += OnPlayMode;
 
@@ -57,10 +69,22 @@ namespace SharkHunter.EditorTools
                 var sv = UnityEngine.Object.FindFirstObjectByType<SideViewCamera>();
                 sv.GetComponent<Camera>().aspect = 16f / 9f;
                 sv.SnapToTarget();
-                if (Arg("-moveX", null) != null || Arg("-moveY", null) != null)
+                if (Arg("-testPrey", "0") == "1")
                 {
-                    var input = new ScriptedInput { Move = new Vector2(float.Parse(Arg("-moveX", "0")), float.Parse(Arg("-moveY", "0"))) };
+                    // Park the nearest prey just in front of the mouth and stop its AI so a bite must connect.
+                    PreyFish best = null; float bd = float.MaxValue;
+                    foreach (var pr in UnityEngine.Object.FindObjectsByType<PreyFish>(FindObjectsSortMode.None))
+                    { float d = Vector2.Distance(pr.transform.position, shark.transform.position); if (d < bd) { bd = d; best = pr; } }
+                    best.transform.position = shark.transform.position + new Vector3(float.Parse(Arg("-preyDx", "2")), 0f, 0f);
+                    best.enabled = Arg("-preyFree", "0") == "1";
+                    fleeProbe = best;
+                    Debug.Log("TESTPREY parked " + best.name);
+                }
+                if (Arg("-moveX", null) != null || Arg("-moveY", null) != null || Arg("-biteEvery", null) != null)
+                {
+                    var input = new ScriptedInput { Move = new Vector2(float.Parse(Arg("-moveX", "0")), float.Parse(Arg("-moveY", "0"))), BiteEvery = float.Parse(Arg("-biteEvery", "-1")) };
                     typeof(SharkController).GetField("input", BindingFlags.NonPublic | BindingFlags.Instance).SetValue(shark, input);
+                    typeof(SharkBite).GetField("input", BindingFlags.NonPublic | BindingFlags.Instance).SetValue(shark.GetComponent<SharkBite>(), input);
                 }
                 startTime = Time.time;
             }
@@ -68,6 +92,9 @@ namespace SharkHunter.EditorTools
             EditorApplication.update -= Tick;
 
             var cam = Camera.main;
+            if (fleeProbe != null) Debug.Log($"FLEE dist={Vector2.Distance(fleeProbe.transform.position, shark.transform.position):F2}");
+            var gs = UnityEngine.Object.FindFirstObjectByType<GameSession>();
+            Debug.Log($"SESSION score={gs.Score} eaten={gs.PreyEaten} hunger={gs.Hunger:F2} state={gs.State} prey={UnityEngine.Object.FindObjectsByType<PreyFish>(FindObjectsSortMode.None).Length}");
             Debug.Log($"STATE shark={shark.transform.position} vel={shark.Velocity} facing={shark.Facing} cam={cam.transform.position} simTime={Time.time - startTime}");
             var rt = new RenderTexture(1280, 720, 24);
             cam.targetTexture = rt;

@@ -19,5 +19,8 @@ namespace SharkHunter
     public interface ISharkVisual
     {
         void UpdateState(in SwimState state, float deltaTime);
+
+        /// <summary>Play the bite animation (jaws open and snap shut over <paramref name="duration"/> seconds).</summary>
+        void PlayBite(float duration);
     }
 }

@@ -21,6 +21,7 @@ namespace SharkHunter
         Vector3 focus, focusVel;
         Vector3 lastTargetPos;
         float lookAheadX, lookAheadVel;
+        float shakeAmp, shakeTime, shakeDuration;
 
         void Awake()
         {
@@ -54,10 +55,25 @@ namespace SharkHunter
             Apply();
         }
 
+        /// <summary>Screen-plane camera shake that decays over <paramref name="duration"/> seconds.</summary>
+        public void Shake(float amplitude, float duration)
+        {
+            shakeAmp = Mathf.Max(shakeAmp * Mathf.Clamp01(shakeTime / Mathf.Max(shakeDuration, 0.001f)), amplitude);
+            shakeDuration = duration;
+            shakeTime = duration;
+        }
+
         void Apply()
         {
             Quaternion rot = Quaternion.Euler(pitchDegrees, 0f, 0f);
-            transform.SetPositionAndRotation(focus - rot * Vector3.forward * distance, rot);
+            Vector3 pos = focus - rot * Vector3.forward * distance;
+            if (shakeTime > 0f)
+            {
+                shakeTime -= Time.unscaledDeltaTime;
+                Vector2 r = Random.insideUnitCircle * shakeAmp * Mathf.Clamp01(shakeTime / shakeDuration);
+                pos += rot * new Vector3(r.x, r.y, 0f);
+            }
+            transform.SetPositionAndRotation(pos, rot);
         }
 
         Vector3 ClampFocus(Vector3 p)

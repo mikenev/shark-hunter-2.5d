@@ -7,5 +7,8 @@ namespace SharkHunter
     {
         /// <summary>Desired swim direction, magnitude 0..1.</summary>
         Vector2 Move { get; }
+
+        /// <summary>True once per bite press (briefly buffered); consuming clears it.</summary>
+        bool ConsumeBite();
     }
 }

@@ -56,6 +56,21 @@ namespace SharkHunter
             return b.ToMesh("Shark_Tail");
         }
 
+        // Lower jaw: origin is the hinge, extends along +X. Submesh 0.
+        public static Mesh SharkJaw()
+        {
+            var b = new MeshBuilder(1);
+            b.Prism(new[] { new Vector2(0f, 0.02f), new Vector2(0.6f, 0.07f), new Vector2(0.55f, -0.04f), new Vector2(0f, -0.1f) }, -0.13f, 0.13f, 0);
+            for (int i = 0; i < 3; i++)
+            {
+                float x = 0.2f + i * 0.14f;
+                b.Prism(new[] { new Vector2(x, 0.05f), new Vector2(x + 0.05f, 0.05f), new Vector2(x + 0.025f, 0.13f) }, -0.1f, 0.1f, 0);
+            }
+            return b.ToMesh("Shark_Jaw");
+        }
+
+        public const float JawHingeX = 1.0f, JawHingeY = -0.2f;
+
         // Fish: submesh 0 = back/fins, 1 = belly, 2 = dark. Faces +X, length ~0.8.
         public static Mesh Fish()
         {

@@ -17,8 +17,22 @@ namespace SharkHunter
         ISharkVisual visual;
         int facing = 1;
         float turnTimer;
+        float lungeTimer, lungeSpeed;
+        Vector2 lungeDir;
 
         public int Facing => facing;
+        /// <summary>When true the shark ignores input and coasts to a stop (e.g. starved).</summary>
+        public bool Frozen { get; set; }
+        public bool IsLunging => lungeTimer > 0f;
+
+        /// <summary>A short burst of speed in <paramref name="dir"/>, overriding normal swimming. Used by the bite.</summary>
+        public void Lunge(Vector2 dir, float speed, float time)
+        {
+            lungeDir = dir.normalized;
+            lungeSpeed = speed;
+            lungeTimer = time;
+            if (Mathf.Abs(lungeDir.x) > 0.1f) facing = (int)Mathf.Sign(lungeDir.x);
+        }
         public Vector2 Velocity => rb != null ? (Vector2)rb.linearVelocity : Vector2.zero;
 
         void Awake()
@@ -35,7 +49,7 @@ namespace SharkHunter
         void FixedUpdate()
         {
             float dt = Time.fixedDeltaTime;
-            Vector2 move = Vector2.ClampMagnitude(input != null ? input.Move : Vector2.zero, 1f);
+            Vector2 move = Frozen || input == null ? Vector2.zero : Vector2.ClampMagnitude(input.Move, 1f);
 
             if (Mathf.Abs(move.x) > 0.2f && Mathf.Sign(move.x) != facing)
             {
@@ -44,11 +58,19 @@ namespace SharkHunter
             }
             turnTimer = Mathf.Max(0f, turnTimer - dt);
 
-            bool thrusting = move.sqrMagnitude > 0.01f;
-            float rate = thrusting ? config.acceleration : config.deceleration;
-            if (turnTimer > 0f) rate *= config.turnAccelScale;
-
-            Vector2 v = Vector2.MoveTowards((Vector2)rb.linearVelocity, move * config.maxSpeed, rate * dt);
+            Vector2 v;
+            if (lungeTimer > 0f)
+            {
+                lungeTimer -= dt;
+                v = lungeDir * lungeSpeed;
+            }
+            else
+            {
+                bool thrusting = move.sqrMagnitude > 0.01f;
+                float rate = thrusting ? config.acceleration : config.deceleration;
+                if (turnTimer > 0f) rate *= config.turnAccelScale;
+                v = Vector2.MoveTowards((Vector2)rb.linearVelocity, move * config.maxSpeed, rate * dt);
+            }
 
             if (area != null)
             {

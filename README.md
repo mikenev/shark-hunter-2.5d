@@ -6,7 +6,7 @@ downward tilt, and layered foreground/background props sit at different Z depths
 Targets: desktop and WebGL (GitHub Pages).
 
 ## Run it
-Open the project in Unity 6000.3.25f1 and open `Assets/_Game/Scenes/Main.unity`. WASD / arrows / gamepad stick to swim.
+Open the project in Unity 6000.3.25f1 and open `Assets/_Game/Scenes/Main.unity`. WASD / arrows / gamepad stick to swim; Space / left click / gamepad A to bite; R / Enter / Start to restart after starving.
 
 ## Regenerate the placeholder slice
 `Tools > Shark Hunter > Build Placeholder Slice` rebuilds all generated meshes, materials, prefabs and the Main scene
@@ -17,10 +17,11 @@ Headless: `Unity -batchmode -quit -projectPath . -executeMethod SharkHunter.Edit
 ```
 Assets/_Game/
   Scripts/
-    Core/       SharkConfig (movement tuning ScriptableObject)
-    Gameplay/   PlayArea, ISwimInput/SwimInput, SharkController, ISharkVisual, SimpleSwimmer
+    Core/       SharkConfig (movement + bite tuning), PreyDefinition (per-prey tuning)
+    Gameplay/   PlayArea, ISwimInput/SwimInput, SharkController, SharkBite, IBitable, PreyFish, PreySpawner,
+                GameSession (score/hunger), ISharkVisual, SimpleSwimmer (background fish)
     CameraRig/  SideViewCamera
-    World/      ParallaxLayer, WaterEnvironment (fog/tint), FollowCamera (bubbles), SwayMotion
+    World/      ParallaxLayer, WaterEnvironment (fog/tint), FollowCamera (bubbles), SwayMotion, BiteFeedback, HudOverlay (IMGUI placeholder HUD)
     Visuals/    MeshBuilder, ShapeFactory (procedural placeholder meshes), SharkVisual
     Editor/     SliceBuilder, BuildTools, CaptureTool
   Prefabs/Placeholder/   generated prefabs
@@ -32,3 +33,8 @@ Assets/_Game/
 ## Swapping art
 Gameplay code only talks to `ISharkVisual`. Replace the `Visual` child of `Prefabs/Placeholder/Shark.prefab`
 with any model that has a component implementing `ISharkVisual` (see `SharkVisual` for the reference implementation).
+
+## Gameplay loop
+Bite = a short lunge plus a mouth hitbox (`SharkBite`, tuned in `Settings/SharkConfig`). Prey (`PreyFish`, tuned by
+`Settings/Prey_*.asset`) wanders, flees when the shark is near, and can be cornered at the play-area edge. Big fish take
+two bites. Eating restores hunger and scores points; if hunger hits zero the shark starves (`GameSession`).
