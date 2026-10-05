@@ -38,3 +38,9 @@ with any model that has a component implementing `ISharkVisual` (see `SharkVisua
 Bite = a short lunge plus a mouth hitbox (`SharkBite`, tuned in `Settings/SharkConfig`). Prey (`PreyFish`, tuned by
 `Settings/Prey_*.asset`) wanders, flees when the shark is near, and can be cornered at the play-area edge. Big fish take
 two bites. Eating restores hunger and scores points; if hunger hits zero the shark starves (`GameSession`).
+
+## Publish to GitHub Pages
+1. In Unity: `Tools > Shark Hunter > Build WebGL` (output in `Build/WebGL`, gitignored).
+2. Run `tools/publish-webgl.sh` — force-pushes the build as a single commit to the `gh-pages` branch.
+3. One-time: repo Settings > Pages > Deploy from branch `gh-pages`, `/ (root)`.
+Live at https://mikenev.github.io/shark-hunter-2.5d/
